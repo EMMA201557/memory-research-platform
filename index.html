@@ -1,13 +1,258 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Memory Research Platform</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+  <title>Entrenament de la memòria</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <div class="app-header-inner">
+        <span class="app-title">🧠 Entrenament de la memòria</span>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Canvia el tema clar/fosc" title="Canvia el tema">🌙</button>
+      </div>
+    </header>
 
+    <main class="app-main">
+
+      <!-- ===================== IDENTIFICATION SCREEN ===================== -->
+      <section id="screen-login" class="screen active">
+        <div class="card login-card">
+          <h1>Entrenament de la memòria</h1>
+          <p class="subtitle">Projecte de recerca sobre la memòria humana</p>
+
+          <form id="login-form" novalidate>
+            <label for="login-name">Nom i cognom</label>
+            <input type="text" id="login-name" autocomplete="off" placeholder="p. ex. Emma Steiner" />
+
+            <label for="login-code">Codi de participant</label>
+            <input type="text" id="login-code" autocomplete="off" placeholder="p. ex. A014" />
+
+            <button type="submit" class="btn btn-primary btn-large">Entrar</button>
+          </form>
+
+          <p id="login-error" class="error-message" role="alert" hidden>Nom o codi incorrectes.</p>
+
+          <button id="btn-show-register" type="button" class="btn btn-link">Ets nou/nova? Crea un compte</button>
+        </div>
+      </section>
+
+      <!-- ===================== CREATE ACCOUNT SCREEN ===================== -->
+      <section id="screen-register" class="screen">
+        <div class="card login-card">
+          <h1>Crea un compte</h1>
+          <p class="welcome-text">
+            Escriu el nom que vulguis fer servir. Et donarem un codi de participant
+            que hauràs de guardar per iniciar sessió les properes vegades.
+          </p>
+
+          <form id="register-form" novalidate>
+            <label for="register-name">Nom</label>
+            <input type="text" id="register-name" autocomplete="off" placeholder="p. ex. Emma" />
+
+            <button type="submit" class="btn btn-primary btn-large">Crear compte</button>
+          </form>
+
+          <p id="register-error" class="error-message" role="alert" hidden></p>
+
+          <button id="btn-register-back" type="button" class="btn btn-link">Ja tinc un compte</button>
+        </div>
+      </section>
+
+      <!-- =============== CREATE ACCOUNT: DEMOGRAPHIC INFO SCREEN =============== -->
+      <section id="screen-register-demographics" class="screen">
+        <div class="card login-card">
+          <h1>Unes darreres preguntes</h1>
+          <p class="welcome-text">
+            Aquestes dades són per a la recerca. Totes les preguntes són obligatòries.
+          </p>
+
+          <form id="register-demographics-form" novalidate>
+            <label for="register-age">Edat</label>
+            <input type="number" id="register-age" min="1" max="120" step="1" autocomplete="off" placeholder="p. ex. 34" />
+
+            <label for="register-gender">Gènere</label>
+            <select id="register-gender">
+              <option value="" disabled selected>Selecciona...</option>
+              <option value="Home">Home</option>
+              <option value="Dona">Dona</option>
+              <option value="No binari">No binari</option>
+              <option value="Prefereixo no dir-ho">Prefereixo no dir-ho</option>
+            </select>
+
+            <label for="register-education">Nivell d'estudis més alt</label>
+            <select id="register-education">
+              <option value="" disabled selected>Selecciona...</option>
+              <option value="Sense estudis">Sense estudis</option>
+              <option value="Educació primària">Educació primària</option>
+              <option value="ESO">ESO / Educació secundària obligatòria</option>
+              <option value="Batxillerat">Batxillerat</option>
+              <option value="Cicles formatius de grau mitjà">Cicles formatius de grau mitjà</option>
+              <option value="Cicles formatius de grau superior">Cicles formatius de grau superior</option>
+              <option value="Estudis universitaris (grau, diplomatura o llicenciatura)">Estudis universitaris (grau, diplomatura o llicenciatura)</option>
+              <option value="Màster">Màster</option>
+              <option value="Doctorat">Doctorat</option>
+            </select>
+
+            <label for="register-occupation">Ocupació actual</label>
+            <select id="register-occupation">
+              <option value="" disabled selected>Selecciona...</option>
+              <option value="Estudiant">Estudiant</option>
+              <option value="Treballador/a per compte d'altri">Treballador/a per compte d'altri</option>
+              <option value="Treballador/a autònom/a">Treballador/a autònom/a</option>
+              <option value="Aturat/ada">Aturat/ada</option>
+              <option value="Jubilat/ada o pensionista">Jubilat/ada o pensionista</option>
+              <option value="Tasques de la llar">Tasques de la llar</option>
+              <option value="Altres">Altres</option>
+            </select>
+
+            <button type="submit" class="btn btn-primary btn-large">Continuar</button>
+          </form>
+
+          <p id="register-demographics-error" class="error-message" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <!-- =============== ACCOUNT CREATED / SHOW CODE SCREEN =============== -->
+      <section id="screen-register-code" class="screen">
+        <div class="card login-card">
+          <h1>Compte creat! 🎉</h1>
+          <p class="welcome-text">
+            Aquest és el teu codi de participant. Anota'l bé: el necessitaràs, junt
+            amb el teu nom, per iniciar sessió les properes vegades.
+          </p>
+
+          <p class="participant-code-display" id="register-code-display"></p>
+
+          <button id="btn-register-code-continue" type="button" class="btn btn-primary btn-large">Ja l'he guardat, continuar</button>
+        </div>
+      </section>
+
+      <!-- ========================= WELCOME SCREEN ========================= -->
+      <section id="screen-welcome" class="screen">
+        <div class="card">
+          <h1 id="welcome-heading">Benvingut/da!</h1>
+          <p class="welcome-text">
+            Aquesta aplicació forma part d'un projecte de recerca sobre la memòria humana.
+          </p>
+          <p class="welcome-text">
+            L'entrenament dura aproximadament 10 minuts i es recomana completar-lo 3 dies per setmana.
+          </p>
+
+          <div id="welcome-already-done" class="notice-box" hidden>
+            <p>Ja has completat l'entrenament avui. Torna demà.</p>
+          </div>
+
+          <div id="welcome-final-done-notice" class="notice-box success" hidden>
+            <p>Has completat l'avaluació final. Moltes gràcies per participar!</p>
+          </div>
+
+          <button id="btn-start-training" type="button" class="btn btn-primary btn-large">Començar l'entrenament</button>
+          <button id="btn-final-assessment" type="button" class="btn btn-primary btn-large" hidden>Fer l'avaluació final</button>
+          <button id="btn-view-progress" type="button" class="btn btn-secondary btn-large">El meu progrés</button>
+          <button id="btn-logout" type="button" class="btn btn-link">Canvia de participant</button>
+        </div>
+      </section>
+
+      <!-- =============== BASELINE / FINAL ASSESSMENT INTRO SCREEN =============== -->
+      <section id="screen-assessment-intro" class="screen">
+        <div class="card">
+          <h1 id="assessment-intro-title">Avaluació inicial</h1>
+          <p class="welcome-text" id="assessment-intro-text"></p>
+          <button id="btn-assessment-start" type="button" class="btn btn-primary btn-large">Començar</button>
+        </div>
+      </section>
+
+      <!-- ==================== BASELINE / FINAL ASSESSMENT SCREEN ==================== -->
+      <section id="screen-assessment" class="screen">
+        <div class="card wide-card">
+          <div class="exercise-header">
+            <h2 id="assessment-title"></h2>
+            <button id="btn-assessment-back" type="button" class="btn btn-secondary">← Cancel·la</button>
+          </div>
+          <div id="assessment-content" class="exercise-content"></div>
+        </div>
+      </section>
+
+      <!-- ========================== MAIN MENU ========================== -->
+      <section id="screen-menu" class="screen">
+        <div class="card wide-card">
+          <div class="progress-bar-track">
+            <div id="menu-progress-bar" class="progress-bar-fill"></div>
+          </div>
+          <p id="menu-progress-label" class="progress-label">0 de 5 exercicis completats</p>
+
+          <div id="menu-exercise-grid" class="exercise-grid"></div>
+
+          <div id="menu-all-done" class="notice-box success" hidden>
+            <p>Entrenament completat! Fins al proper entrenament.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================== EXERCISE SCREEN ======================== -->
+      <section id="screen-exercise" class="screen">
+        <div class="card wide-card">
+          <div class="exercise-header">
+            <h2 id="exercise-title"></h2>
+            <button id="btn-back-to-menu" type="button" class="btn btn-secondary">← Tornar al menú</button>
+          </div>
+          <div id="exercise-content" class="exercise-content"></div>
+        </div>
+      </section>
+
+      <!-- ======================= DAILY SUMMARY SCREEN ======================= -->
+      <section id="screen-summary" class="screen">
+        <div class="card wide-card">
+          <h1>Estadístiques del dia</h1>
+          <div id="summary-stats" class="results-stats"></div>
+          <div id="summary-per-exercise" class="summary-exercise-list"></div>
+          <p id="summary-sync-status" class="sync-status">Desant les dades...</p>
+          <button id="btn-summary-continue" type="button" class="btn btn-primary btn-large">D'acord</button>
+        </div>
+      </section>
+
+      <!-- ===================== PARTICIPANT PROGRESS SCREEN ===================== -->
+      <section id="screen-progress" class="screen">
+        <div class="card wide-card">
+          <h1>El meu progrés</h1>
+          <div id="progress-stats" class="results-stats"></div>
+
+          <div id="progress-assessment-section" hidden>
+            <p class="results-detail-title">Avaluacions de memòria</p>
+            <div id="progress-assessment" class="results-stats"></div>
+          </div>
+
+          <button id="btn-progress-back" type="button" class="btn btn-secondary btn-large">Tornar</button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Data (no framework, no bundler: plain scripts in dependency order) -->
+  <script src="js/data/participants.js"></script>
+  <script src="js/data/words.js"></script>
+  <script src="js/data/associations.js"></script>
+  <script src="js/data/emojis.js"></script>
+  <script src="js/data/assessmentWords.js"></script>
+
+  <!-- Core -->
+  <script src="js/core/utils.js"></script>
+  <script src="js/core/storage.js"></script>
+  <script src="js/core/sheets.js"></script>
+
+  <!-- Exercises -->
+  <script src="js/exercises/memory.js"></script>
+  <script src="js/exercises/sequences.js"></script>
+  <script src="js/exercises/words.js"></script>
+  <script src="js/exercises/associations.js"></script>
+  <script src="js/exercises/positions.js"></script>
+  <script src="js/exercises/assessment.js"></script>
+
+  <!-- App controller (must load last: wires everything above together) -->
+  <script src="js/core/app.js"></script>
+</body>
+</html>

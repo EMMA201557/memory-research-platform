@@ -1,6 +1,0 @@
-{
-  "name": "Memory Research Platform",
-  "description": "A simple, modern, and responsive memory training platform for a 6-week research project, featuring 5 interactive exercises, automatic participant tracking, and Google Sheets integration.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
