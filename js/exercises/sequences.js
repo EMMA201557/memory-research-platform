@@ -9,10 +9,16 @@
  * sequence).
  *
  * 5 rounds, starting at 4 emojis and growing by 1 each round.
+ *
+ * Unlike Memòria/Paraules/Associacions, this exercise draws fresh random
+ * emojis from a shared pool every round already (see SEQUENCE_EMOJI_POOL
+ * in data/emojis.js), so it has no "same content every day" problem to
+ * fix - `sessionIndex` is accepted only so app.js can call all 5 exercise
+ * modules the same way, and is otherwise unused here.
  */
 
 const ExerciseSequences = {
-  start(container, setIndex, onComplete) {
+  start(container, setIndex, sessionIndex, onComplete) {
     const TOTAL_ROUNDS = 5;
     const START_LENGTH = 4;
     let round = 1;

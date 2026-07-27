@@ -1,18 +1,25 @@
 /*
  * exercises/associations.js
  * -----------------------------------------------------------------------
- * Exercise 4 - Associacions: 10 word pairs (from the participant's
- * assigned set, see data/associations.js) are shown for 30 seconds, e.g.
+ * Exercise 4 - Associacions: 10 word pairs are shown for 30 seconds, e.g.
  * "Metge -> Hospital". Then only the first word of each pair is shown,
  * in a shuffled order, and the participant writes the matching second
  * word for each one. Matching ignores accents and case.
+ *
+ * The 10 pairs come from data/associations.js:
+ * ASSOCIATION_SETS[track][sessionIndex] - a fixed list for that
+ * participant's balanced-difficulty track AND that day's session, so the
+ * pairs advance every session instead of being randomly re-drawn from the
+ * same small pool each time (see PROGRAM_TOTAL_SESSIONS / currentSessionIndex
+ * in app.js).
  */
 
 const ExerciseAssociations = {
-  start(container, setIndex, onComplete) {
+  start(container, setIndex, sessionIndex, onComplete) {
     const STUDY_SECONDS = 30;
     const PAIR_COUNT = 10;
-    const pairs = sampleUnique(ASSOCIATION_SETS[setIndex % ASSOCIATION_SETS.length], PAIR_COUNT);
+    const track = ASSOCIATION_SETS[setIndex % ASSOCIATION_SETS.length];
+    const pairs = track[sessionIndex % track.length];
     const timeoutIds = [];
 
     renderStudyPhase();

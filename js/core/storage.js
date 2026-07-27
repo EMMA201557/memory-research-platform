@@ -125,6 +125,21 @@ function hasTrainedToday(code) {
 }
 
 /**
+ * Number of sessions this participant has already completed - i.e. the
+ * 0-based index of the session they're about to start today. Used to pick
+ * that day's exercise content (see data/words.js, data/associations.js,
+ * data/emojis.js - each participant's balanced-set track holds one fixed
+ * content list per planned session, so content advances day to day
+ * instead of being randomly re-sampled from the same small pool every
+ * time).
+ */
+function getParticipantSessionCount(code) {
+  const store = readStore();
+  const record = store[code];
+  return record ? record.sessions.length : 0;
+}
+
+/**
  * Saves a completed session for a participant and returns the updated
  * record. `scores` is an object with memory/sequences/words/associations/
  * positions keys, each 0-100. `details` holds the raw per-exercise data

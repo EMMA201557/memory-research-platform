@@ -44,6 +44,7 @@ let participants = [];      // [{ name, code }] parsed from participants.js
 let currentParticipant = null; // { name, code, setIndex }
 let sessionResults = {};    // { [exerciseKey]: { score, details } }
 let sessionStartTime = null;
+let currentSessionIndex = 0; // which day of the program today is, 0-based (see startNewSession)
 let currentExerciseStop = null;   // cleanup fn for the exercise in progress
 let currentAssessmentKind = null; // "baseline" | "final"
 let currentAssessmentStop = null; // cleanup fn for the assessment in progress
@@ -458,6 +459,12 @@ function startNewSession() {
   }
   sessionResults = {};
   sessionStartTime = performance.now();
+  // 0-based index of today's session within the planned program, e.g. 0 on
+  // day 1, 1 on day 2, ... - fixed for the whole session so every exercise
+  // opened today (in any order) uses the same day's content. Wraps past
+  // PROGRAM_TOTAL_SESSIONS if someone keeps training beyond the planned
+  // program, cycling content rather than going out of bounds.
+  currentSessionIndex = getParticipantSessionCount(currentParticipant.code) % PROGRAM_TOTAL_SESSIONS;
   renderMenu();
   showScreen("screen-menu");
 }
@@ -489,13 +496,24 @@ function renderMenu() {
 }
 
 function openExercise(exercise) {
+  // Defensive: normal UI navigation can't reach openExercise a second time
+  // without going through goToMenu or a completion first (there's no way
+  // to click a different exercise card while already inside one), but
+  // stop any still-running exercise's timers first regardless - leaving
+  // a previous exercise's setTimeout armed would let it fire later and
+  // overwrite whatever's rendered into the shared #exercise-content div.
+  if (currentExerciseStop) {
+    currentExerciseStop();
+    currentExerciseStop = null;
+  }
+
   document.getElementById("exercise-title").textContent = exercise.title;
   const content = document.getElementById("exercise-content");
   content.innerHTML = "";
 
   showScreen("screen-exercise");
 
-  currentExerciseStop = exercise.module.start(content, currentParticipant.setIndex, (result) => {
+  currentExerciseStop = exercise.module.start(content, currentParticipant.setIndex, currentSessionIndex, (result) => {
     currentExerciseStop = null;
     sessionResults[exercise.key] = result;
     renderMenu();

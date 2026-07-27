@@ -1,17 +1,23 @@
 /*
  * exercises/words.js
  * -----------------------------------------------------------------------
- * Exercise 3 - Paraules: 12 words (drawn from the participant's assigned
- * set, see data/words.js) are shown for 30 seconds, then the participant
- * writes down as many as they remember, one per line. Matching ignores
- * accents and letter case (see utils.normalizeText).
+ * Exercise 3 - Paraules: 12 words are shown for 30 seconds, then the
+ * participant writes down as many as they remember, one per line.
+ * Matching ignores accents and letter case (see utils.normalizeText).
+ *
+ * The 12 words come from data/words.js: WORD_SETS[track][sessionIndex] -
+ * a fixed list for that participant's balanced-difficulty track AND that
+ * day's session, so the word list advances every session instead of being
+ * randomly re-drawn from the same small pool each time (see
+ * PROGRAM_TOTAL_SESSIONS / currentSessionIndex in app.js).
  */
 
 const ExerciseWords = {
-  start(container, setIndex, onComplete) {
+  start(container, setIndex, sessionIndex, onComplete) {
     const STUDY_SECONDS = 30;
     const WORD_COUNT = 12;
-    const words = sampleUnique(WORD_SETS[setIndex % WORD_SETS.length], WORD_COUNT);
+    const track = WORD_SETS[setIndex % WORD_SETS.length];
+    const words = track[sessionIndex % track.length];
     const timeoutIds = [];
 
     renderStudyPhase();
@@ -61,7 +67,6 @@ paraula 2
     }
 
     function evaluate(rawInput) {
-      const normalizedTargets = words.map(normalizeText);
       const enteredRaw = rawInput
         .split(/[\n,]/)
         .map((w) => w.trim())

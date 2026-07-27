@@ -6,11 +6,15 @@
  * module follows the same shape so app.js can
  * drive them all the same way:
  *
- *   const stop = ExerciseMemory.start(containerEl, setIndex, onComplete);
+ *   const stop = ExerciseMemory.start(containerEl, setIndex, sessionIndex, onComplete);
  *
  * - containerEl: empty <div> to render the exercise UI into.
- * - setIndex: which balanced content set (0..NUM_SETS-1) this
+ * - setIndex: which balanced content track (0..NUM_SETS-1) this
  *   participant is assigned to.
+ * - sessionIndex: 0-based index of today's session within the planned
+ *   program (see PROGRAM_TOTAL_SESSIONS in app.js) - picks that day's
+ *   fixed symbol set within the track, so the board's content advances
+ *   session to session instead of being the same every time.
  * - onComplete({ score, details }): called once, when the participant
  *   finishes the exercise and presses "Tornar al menú" on the results
  *   screen. `score` is 0-100.
@@ -20,8 +24,9 @@
  */
 
 const ExerciseMemory = {
-  start(container, setIndex, onComplete) {
-    const symbols = MEMORY_BOARD_SETS[setIndex % MEMORY_BOARD_SETS.length];
+  start(container, setIndex, sessionIndex, onComplete) {
+    const track = MEMORY_BOARD_SETS[setIndex % MEMORY_BOARD_SETS.length];
+    const symbols = track[sessionIndex % track.length];
     const deck = shuffleArray([...symbols, ...symbols]); // e.g. 8 pairs = 16 cards
 
     let firstCard = null;

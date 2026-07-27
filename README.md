@@ -147,15 +147,59 @@ login sync, which only ever returns `{ name, code }` pairs, so age/gender/
 education/occupation aren't reachable by anyone who just has the Apps
 Script URL.
 
-## Balanced difficulty sets
+## Balanced difficulty sets, and content advancing session to session
 
 Words, associations and memory-board symbols each come in 3 pre-built,
-difficulty-balanced sets. A participant's code is deterministically hashed
-(`codeToSetIndex` in `utils.js`) to always pick the same set index across
-every session, so difficulty never drifts for a given participant, while two
-different participants may land on different sets. To add more variety,
-extend `WORD_SETS`, `ASSOCIATION_SETS` and `MEMORY_BOARD_SETS` with more
-entries and bump `NUM_SETS` in `storage.js` to match.
+difficulty-balanced **tracks**. A participant's code is deterministically
+hashed (`codeToSetIndex` in `utils.js`) to always pick the same track
+across every session, so difficulty never drifts for a given participant,
+while two different participants may land on different tracks.
+
+Within a track, content is **day-indexed, not randomly re-sampled**: each
+of the 3 data files nests one more level than the track -
+`WORD_SETS[track][sessionIndex]`, `ASSOCIATION_SETS[track][sessionIndex]`,
+`MEMORY_BOARD_SETS[track][sessionIndex]` - where `sessionIndex` is how many
+sessions that participant has already completed (0 on their first day, 1 on
+their second, ...; see `currentSessionIndex` in app.js, computed once per
+session in `startNewSession()` and passed to whichever exercise is opened).
+Earlier versions of this app randomly sampled each day's words/pairs from
+one small shared pool per track, which meant participants would quickly see
+(and start memorizing) the same content over and over - defeating the point
+of a repeated memory-training protocol. Now each of the 18 planned sessions
+(`PROGRAM_TOTAL_SESSIONS`) gets its own fixed word list and association-pair
+list that's never repeated within that track across the whole program. If a
+participant keeps training past session 18, content cycles back to session
+1's list rather than erroring (`sessionIndex % track.length` in each
+exercise module) - extend the data files with more per-track sessions if
+you'd rather it not repeat at all beyond 18.
+
+The memory board is the one exception: there aren't 18 sessions' worth
+(144) of simple, mutually-unambiguous, universally-rendered emoji per track
+to draw on without resorting to near-duplicate symbols that would make the
+matching game confusing rather than harder. Its 3 tracks instead each hold
+a pool of 48 symbols split into 6 groups of 8, cycling through those 6
+groups across the 18 sessions (a set of 8 symbols reappears every 6th
+session, not every single session like before) - see the comment in
+`data/emojis.js` for the exact reasoning. This matters less for Memòria
+than for the other exercises anyway: its actual memory task is spatial
+(which position matches which), and the board LAYOUT is freshly shuffled
+every session regardless of symbol repetition.
+
+Exercises 2 (Seqüències) and 5 (Posicions) were never affected by this -
+both already generate fresh random content every round from a shared pool
+(sequence emojis) or from scratch (grid positions), so there was nothing to
+fix for them; their `start()` functions accept the same `sessionIndex`
+parameter as the other three purely for a consistent call signature in
+`app.js#openExercise()`, and ignore it.
+
+To add more variety or extend beyond 18 planned sessions, add more
+per-track entries to `WORD_SETS`/`ASSOCIATION_SETS`/`MEMORY_BOARD_SETS`
+(keeping each session's word/pair/symbol count exactly 12/10/8) and bump
+`PROGRAM_TOTAL_SESSIONS` in `app.js` to match. The data files were
+generated with a script that deduplicates and partitions a large word/pair
+pool automatically - hand-editing 3×18 nested arrays directly is error
+prone at this size, so scripting a similar pass is worth it if you extend
+them significantly.
 
 ## Google Sheets integration
 
@@ -316,6 +360,15 @@ control the "X of Y sessions" completion percentage shown on the progress
 screen (default: 6 weeks × 3 sessions = 18 total). This is also what
 unlocks the final assessment (see below): it becomes available once a
 participant has completed `PROGRAM_TOTAL_SESSIONS` daily sessions.
+
+**This number is now also coupled to the daily content** (see "Balanced
+difficulty sets, and content advancing session to session" below):
+`WORD_SETS`/`ASSOCIATION_SETS`/`MEMORY_BOARD_SETS` each hold exactly 18
+sessions' worth of content per track, matching the default
+`PROGRAM_TOTAL_SESSIONS`. If you change the program length without also
+resizing those data files, content will still work (each exercise wraps
+with `% track.length`), but it'll start repeating at whatever session count
+the data files actually have, not at your new program length.
 
 ## Baseline / final assessment
 

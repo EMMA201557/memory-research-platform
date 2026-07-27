@@ -5,10 +5,15 @@
  * blue, then resets. The participant taps the same n squares (order
  * doesn't matter, but the SET of squares must match exactly). 6 rounds,
  * n grows by one each round.
+ *
+ * The highlighted positions are freshly randomized every round already,
+ * so - like Seqüències - there's no "same content every day" problem to
+ * fix here. `sessionIndex` is accepted only for a consistent call
+ * signature across all 5 exercise modules, and is otherwise unused.
  */
 
 const ExercisePositions = {
-  start(container, setIndex, onComplete) {
+  start(container, setIndex, sessionIndex, onComplete) {
     const TOTAL_ROUNDS = 6;
     const GRID_SIZE = 16; // 4x4
     const START_N = 3;
