@@ -48,7 +48,6 @@ let currentSessionIndex = 0; // which day of the program today is, 0-based (see 
 let currentExerciseStop = null;   // cleanup fn for the exercise in progress
 let currentAssessmentKind = null; // "baseline" | "final"
 let currentAssessmentStop = null; // cleanup fn for the assessment in progress
-let remoteParticipantsPromise = null; // cached promise, see loadRemoteParticipants()
 // { name, code } of a just-created account while its code is on screen, so
 // "Ja l'he guardat, continuar" (screen-register-code) doesn't need to
 // re-derive it.
@@ -75,31 +74,6 @@ function parseParticipants(csvText) {
       return { name, code };
     })
     .filter((p) => p.name && p.code);
-}
-
-/**
- * Fetches self-registered participants from the Apps Script (see
- * sheets.js#fetchRemoteRegisteredParticipants) and merges any not already
- * known locally into `participants`, so someone who registered on another
- * device is recognized here too. Cached in a single promise: called once
- * eagerly at startup (init()) to warm the cache, and awaited again in
- * attemptLogin() so a login attempt that races ahead of that first fetch
- * still waits for it rather than missing a real match. Codes already
- * present locally (from the CSV or this device's own registrations) win -
- * the remote list only ever ADDS entries, never overrides one already here.
- */
-function loadRemoteParticipants() {
-  if (!remoteParticipantsPromise) {
-    remoteParticipantsPromise = fetchRemoteRegisteredParticipants().then((remote) => {
-      remote.forEach((p) => {
-        if (p && p.name && p.code && !participants.some((existing) => existing.code === p.code)) {
-          participants.push(p);
-        }
-      });
-      return remote;
-    });
-  }
-  return remoteParticipantsPromise;
 }
 
 // ------------------------------------------------------------ navigation
@@ -138,27 +112,49 @@ function initLoginScreen() {
     submitBtn.textContent = "Comprovant...";
 
     try {
-      // Waits for self-registered participants from other devices to sync
-      // in first (see sheets.js#fetchRemoteRegisteredParticipants), so
-      // someone who registered elsewhere is recognized here too. Always
-      // resolves quickly (cached after the first call) or on its own
-      // timeout, even offline - never hangs.
-      await loadRemoteParticipants();
-
       const name = document.getElementById("login-name").value.trim();
       const code = document.getElementById("login-code").value.trim();
       errorEl.hidden = true;
 
-      const match = participants.find((p) => p.name === name && p.code === code);
-      if (match) {
-        form.reset();
-        logIn(match.name, match.code);
+      if (!name || !code) {
+        errorEl.textContent = "Escriu el teu nom i codi de participant.";
+        errorEl.hidden = false;
         return;
       }
 
-      errorEl.textContent = name && code
-        ? "Nom o codi incorrectes."
-        : "Escriu el teu nom i codi de participant.";
+      // What this device already knows - CSV + this device's own past
+      // registrations/logins - checked first so login never depends on
+      // the network for an account already established here.
+      const localMatch = participants.find((p) => p.name === name && p.code === code);
+
+      // Either way, ask about just this ONE code (see
+      // sheets.js#fetchRemoteParticipantByCode) - a scoped lookup that
+      // never exposes any other participant's data - so an account
+      // created or trained on another device is recognized here too, and
+      // a known-locally account picks up anything that happened
+      // elsewhere since last time (a newly-passed baseline, today's
+      // session, ...). Resolves quickly, or on its own timeout even
+      // offline - never hangs, and a lookup failure just means no new
+      // info this time, not a login failure.
+      const remote = await fetchRemoteParticipantByCode(code);
+      if (remote) mergeRemoteSummary(remote.name, remote.code, remote);
+
+      if (localMatch) {
+        form.reset();
+        logIn(localMatch.name, localMatch.code);
+        return;
+      }
+
+      if (remote && remote.name === name) {
+        if (!participants.some((p) => p.code === code)) {
+          participants.push({ name: remote.name, code: remote.code });
+        }
+        form.reset();
+        logIn(remote.name, remote.code);
+        return;
+      }
+
+      errorEl.textContent = "Nom o codi incorrectes.";
       errorEl.hidden = false;
     } finally {
       isChecking = false;
@@ -178,13 +174,19 @@ function initLoginScreen() {
 // ---------------------------------------------------- create account (register)
 
 /**
- * Generates a participant code not already used by anyone in `participants`
- * - letter "P" (for "self-registered participant", so it reads as visibly
- * different from researcher-assigned codes like "A014") plus 3 zero-padded
- * digits, e.g. "P042". Collisions are checked against the full list
- * regardless of prefix; retries on one, astronomically unlikely to loop
- * more than once given only ~1000 self-registered participants would ever
- * fit before collisions became frequent.
+ * Generates a candidate participant code not already used by anyone this
+ * device knows about locally (`participants` - the CSV list plus this
+ * device's own past registrations/logins) - letter "P" (for
+ * "self-registered participant", so it reads as visibly different from
+ * researcher-assigned codes like "A014") plus 3 zero-padded digits, e.g.
+ * "P042".
+ *
+ * This is only a local pre-check, not a global uniqueness guarantee: this
+ * device has no way to know every code ever used on every other device
+ * without fetching everyone's data, which is exactly what doGet is
+ * deliberately scoped to never do (see sheets.js#fetchRemoteParticipantByCode).
+ * The caller (initRegisterDemographicsScreen) confirms the candidate is
+ * free remotely too, one code at a time, before committing to it.
  */
 function generateUniqueParticipantCode() {
   const existingCodes = new Set(participants.map((p) => p.code));
@@ -221,10 +223,6 @@ function initRegisterScreen() {
     submitBtn.textContent = "Comprovant...";
 
     try {
-      // Needed to check name uniqueness against accounts registered on
-      // other devices too (see loadRemoteParticipants()).
-      await loadRemoteParticipants();
-
       const name = document.getElementById("register-name").value.trim();
       errorEl.hidden = true;
 
@@ -234,10 +232,14 @@ function initRegisterScreen() {
         return;
       }
 
-      const nameTaken = participants.some(
+      const nameTakenLocally = participants.some(
         (p) => p.name.toLowerCase() === name.toLowerCase()
       );
-      if (nameTaken) {
+      // Scoped check (see sheets.js#checkRemoteNameTaken): only ever
+      // answers "is this name taken?" - never who by, or anyone else's
+      // data. Skipped once a local match already settles the question.
+      const nameTakenRemotely = nameTakenLocally ? false : await checkRemoteNameTaken(name);
+      if (nameTakenLocally || nameTakenRemotely) {
         errorEl.textContent = "Aquest nom ja està en ús. Tria'n un altre.";
         errorEl.hidden = false;
         return;
@@ -262,9 +264,10 @@ function initRegisterScreen() {
 
 function initRegisterDemographicsScreen() {
   const form = document.getElementById("register-demographics-form");
+  const submitBtn = form.querySelector("button[type=submit]");
   const errorEl = document.getElementById("register-demographics-error");
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     if (!pendingRegistrationName) {
@@ -286,23 +289,45 @@ function initRegisterDemographicsScreen() {
     }
     errorEl.hidden = true;
 
-    const name = pendingRegistrationName;
-    const code = generateUniqueParticipantCode();
-    const demographics = { age: Number(age), gender, educationLevel, occupation };
+    submitBtn.disabled = true;
+    const originalLabel = submitBtn.textContent;
+    submitBtn.textContent = "Creant compte...";
 
-    getOrCreateParticipantRecord(name, code);
-    saveDemographics(code, demographics);
-    registerNewParticipant(name, code);
-    participants.push({ name, code });
-    // Fire-and-forget: this is a bookkeeping event for the researcher, not
-    // data the participant is waiting on, so it shouldn't hold up onboarding.
-    sendToGoogleSheets(buildRegistrationSheetPayload(name, code, demographics));
+    try {
+      const name = pendingRegistrationName;
+      let code = generateUniqueParticipantCode();
+      // generateUniqueParticipantCode() only checks against codes this
+      // device already knows about locally. Confirm the candidate isn't
+      // already used by someone on another device via a scoped, one-code
+      // lookup (see sheets.js#fetchRemoteParticipantByCode) before
+      // committing to it - regenerating and re-checking on the rare
+      // collision rather than fetching the full code list to check
+      // against up front.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const remote = await fetchRemoteParticipantByCode(code);
+        if (!remote) break;
+        code = generateUniqueParticipantCode();
+      }
 
-    pendingRegistrationName = null;
-    form.reset();
-    document.getElementById("register-code-display").textContent = code;
-    showScreen("screen-register-code");
-    pendingLogin = { name, code };
+      const demographics = { age: Number(age), gender, educationLevel, occupation };
+
+      getOrCreateParticipantRecord(name, code);
+      saveDemographics(code, demographics);
+      registerNewParticipant(name, code);
+      participants.push({ name, code });
+      // Fire-and-forget: this is a bookkeeping event for the researcher, not
+      // data the participant is waiting on, so it shouldn't hold up onboarding.
+      sendToGoogleSheets(buildRegistrationSheetPayload(name, code, demographics));
+
+      pendingRegistrationName = null;
+      form.reset();
+      document.getElementById("register-code-display").textContent = code;
+      showScreen("screen-register-code");
+      pendingLogin = { name, code };
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+    }
   });
 }
 
@@ -665,10 +690,12 @@ function initThemeToggle() {
 
 function init() {
   // Researcher-authorized list + anyone who self-registered on this device.
+  // Anyone known only remotely (registered/trained on a different device)
+  // is looked up on demand, one code/name at a time, during login/register
+  // (see sheets.js#fetchRemoteParticipantByCode / checkRemoteNameTaken) -
+  // not fetched in bulk here, so the app never holds (or asks the Apps
+  // Script for) more than one other participant's data at a time.
   participants = parseParticipants(PARTICIPANTS_CSV).concat(loadSelfRegisteredParticipants());
-  // Warm the cache now so it's usually already resolved by the time anyone
-  // submits the login/register form; both await this same promise anyway.
-  loadRemoteParticipants();
   initThemeToggle();
   initLoginScreen();
   initRegisterScreen();

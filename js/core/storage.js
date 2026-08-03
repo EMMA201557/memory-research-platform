@@ -8,6 +8,17 @@
  * localStorage is what the app itself reads to enforce "one session per
  * day" and to render each participant's personal statistics.
  *
+ * localStorage is per-browser/device, so on its own a participant logging
+ * in from a second device would look brand new - no baseline, no session
+ * history. mergeRemoteSummary() (below) closes that gap on login/register
+ * by reading a lightweight summary back from the Sheet for that ONE
+ * participant's code (see sheets.js#fetchRemoteParticipantByCode - scoped
+ * so the Apps Script never hands back more than one participant's data at
+ * a time) and filling in only what's missing locally; entries it adds are
+ * flagged with `syncedFromOtherDevice: true` and are sparser than a
+ * locally-recorded entry (see that function's doc comment for exactly
+ * what's included).
+ *
  * Data shape stored under STORAGE_KEY:
  * {
  *   "A014": {
@@ -114,6 +125,86 @@ function saveDemographics(code, demographics) {
   if (!store[code]) return;
   store[code].demographics = demographics;
   writeStore(store);
+}
+
+/**
+ * Folds a remote participant summary (from the Apps Script's doGet, one
+ * code at a time - see sheets.js#fetchRemoteParticipantByCode) into this
+ * device's local record, so completing the baseline, the final
+ * assessment, or a day's
+ * training on one device is recognized on another instead of silently
+ * resetting per device. `remote` is { baselineDone, finalDone,
+ * baselineScore, finalScore, trainedDates, totalScores }.
+ *
+ * Only ever ADDS what's missing locally - never overwrites or removes
+ * anything already here - so this is safe to call on every login/register
+ * attempt regardless of how much local data already exists (e.g. more
+ * recent local sessions that haven't synced to the Sheet yet are left
+ * untouched).
+ *
+ * The synced-in placeholders are intentionally sparse: a remote "baseline
+ * done" only carries its score, not the exact date, forgotten words, or
+ * recall time (the Sheet summary doesn't include those, to keep doGet's
+ * response small) - `syncedFromOtherDevice: true` marks them as such in
+ * case that distinction ever matters. Placeholder sessions likewise only
+ * carry the date and total score (needed for the one-per-day gate and the
+ * progress dashboard's day/streak/average/best-score maths, none of which
+ * read the per-exercise `scores`/`details` breakdown - see
+ * computeParticipantStats), not full session detail.
+ */
+function mergeRemoteSummary(name, code, remote) {
+  const store = readStore();
+  if (!store[code]) {
+    store[code] = { name, code, demographics: null, baselineAssessment: null, finalAssessment: null, sessions: [] };
+  }
+  const record = store[code];
+  let changed = false;
+
+  if (remote.baselineDone && !record.baselineAssessment) {
+    record.baselineAssessment = {
+      date: null,
+      correct: null,
+      total: null,
+      score: remote.baselineScore != null ? remote.baselineScore : null,
+      forgottenWords: [],
+      timeSeconds: null,
+      syncedFromOtherDevice: true
+    };
+    changed = true;
+  }
+
+  if (remote.finalDone && !record.finalAssessment) {
+    record.finalAssessment = {
+      date: null,
+      correct: null,
+      total: null,
+      score: remote.finalScore != null ? remote.finalScore : null,
+      forgottenWords: [],
+      timeSeconds: null,
+      syncedFromOtherDevice: true
+    };
+    changed = true;
+  }
+
+  const knownDates = new Set(record.sessions.map((s) => s.date));
+  (remote.trainedDates || []).forEach((date, i) => {
+    if (!date || knownDates.has(date)) return;
+    knownDates.add(date);
+    const totalScore = (remote.totalScores && remote.totalScores[i]) || 0;
+    record.sessions.push({
+      date,
+      totalTimeSeconds: 0,
+      scores: null,
+      details: null,
+      totalScore,
+      percentCorrect: totalScore,
+      syncedFromOtherDevice: true
+    });
+    changed = true;
+  });
+
+  if (changed) writeStore(store);
+  return record;
 }
 
 /** True if this participant already has a completed session today. */

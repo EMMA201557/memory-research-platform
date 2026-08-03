@@ -118,7 +118,7 @@ const ExerciseMemory = {
             <div class="stat"><span class="stat-value">${moves}</span><span class="stat-label">Moviments</span></div>
             <div class="stat"><span class="stat-value">${score}</span><span class="stat-label">Puntuació</span></div>
           </div>
-          <button type="button" class="btn btn-primary" id="memory-continue">Tornar al menú</button>
+          <button type="button" class="btn btn-primary" id="memory-continue">Guardar</button>
         </div>
       `;
 

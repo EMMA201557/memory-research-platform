@@ -569,7 +569,7 @@ textarea {
 
 .emoji-palette {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
   gap: 10px;
   max-width: 480px;
   margin: 0 auto;
@@ -579,8 +579,8 @@ textarea {
   border: 1px solid var(--color-border);
   background: var(--color-surface-alt);
   border-radius: var(--radius-sm);
-  font-size: 1.5rem;
-  padding: 10px 0;
+  font-size: 2.2rem;
+  padding: 12px 0;
   cursor: pointer;
   transition: transform 120ms ease, background var(--transition);
 }

@@ -114,7 +114,7 @@ const ExercisePositions = {
             <div class="stat"><span class="stat-value">${correctRounds}/${TOTAL_ROUNDS}</span><span class="stat-label">Rondes correctes</span></div>
             <div class="stat"><span class="stat-value">${score}</span><span class="stat-label">Puntuació</span></div>
           </div>
-          <button type="button" class="btn btn-primary" id="positions-continue">Tornar al menú</button>
+          <button type="button" class="btn btn-primary" id="positions-continue">Guardar</button>
         </div>
       `;
       container.querySelector("#positions-continue").addEventListener("click", () => {

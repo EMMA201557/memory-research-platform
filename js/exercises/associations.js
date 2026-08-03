@@ -108,7 +108,7 @@ const ExerciseAssociations = {
               )
               .join("")}
           </div>
-          <button type="button" class="btn btn-primary" id="assoc-continue">Tornar al menú</button>
+          <button type="button" class="btn btn-primary" id="assoc-continue">Guardar</button>
         </div>
       `;
 

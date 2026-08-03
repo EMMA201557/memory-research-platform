@@ -90,7 +90,7 @@ paraula 2
                  <div class="word-grid">${forgottenWords.map((w) => `<span class="word-chip muted">${w}</span>`).join("")}</div>`
               : `<p class="results-detail-title">Les has recordat totes! 🎉</p>`
           }
-          <button type="button" class="btn btn-primary" id="words-continue">Tornar al menú</button>
+          <button type="button" class="btn btn-primary" id="words-continue">Guardar</button>
         </div>
       `;
 

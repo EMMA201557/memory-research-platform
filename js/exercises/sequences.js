@@ -132,7 +132,7 @@ const ExerciseSequences = {
             <div class="stat"><span class="stat-value">${correctRounds}/${TOTAL_ROUNDS}</span><span class="stat-label">Rondes correctes</span></div>
             <div class="stat"><span class="stat-value">${score}</span><span class="stat-label">Puntuació</span></div>
           </div>
-          <button type="button" class="btn btn-primary" id="sequences-continue">Tornar al menú</button>
+          <button type="button" class="btn btn-primary" id="sequences-continue">Guardar</button>
         </div>
       `;
       container.querySelector("#sequences-continue").addEventListener("click", () => {

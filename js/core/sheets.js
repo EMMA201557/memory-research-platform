@@ -10,7 +10,7 @@
  * the "could not save" message (harmless while developing).
  */
 
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzcSX0Lz2mLd5mkpZ-rlfAmFHHLnxHMYEdp041LY1iTUMKFkaWbWyWVLegUlErIwrCK/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby9N5QNC0__ucTLoe-7aBYqNxVDU-g9Caa6-pkDsbyCu8oIL1Ty-KHEXQJovTLn0IiX/exec";
 
 /**
  * Sends one finished session OR assessment result to the Google Sheet.
@@ -133,9 +133,13 @@ function buildRegistrationSheetPayload(name, code, demographics) {
 }
 
 /**
- * Fetches the list of self-registered { name, code } participants back
- * from the Apps Script's doGet endpoint (see README.md), so a participant
- * who registered on one device is also recognized on another.
+ * Generic JSONP GET against the Apps Script's doGet endpoint (see
+ * README.md). `params` is a plain object of query-string params (a
+ * `callback` param is added automatically - any you pass yourself is
+ * overwritten). Resolves whatever the callback was invoked with, or
+ * `fallback` on any failure - offline, no URL configured, timeout, an
+ * older deployed Apps Script without doGet, or a response that never
+ * calls back at all.
  *
  * Why JSONP instead of fetch(): Apps Script responses don't include
  * Access-Control-Allow-Origin, so a cross-origin fetch() can't read the
@@ -146,20 +150,15 @@ function buildRegistrationSheetPayload(name, code, demographics) {
  * callback we define - the classic pre-CORS JSONP pattern, still the
  * standard way to read data back from an Apps Script web app on a static
  * page with no server of its own.
- *
- * Always resolves (never rejects), with [] on any failure - offline, no
- * URL configured, timeout, or an older deployed Apps Script that doesn't
- * have doGet yet - so callers can treat "nothing to add" and "couldn't
- * check" the same way rather than needing their own try/catch.
  */
-function fetchRemoteRegisteredParticipants(timeoutMs = 6000) {
+function jsonpGet(params, fallback, timeoutMs = 6000) {
   return new Promise((resolve) => {
     if (!GOOGLE_SCRIPT_URL) {
-      resolve([]);
+      resolve(fallback);
       return;
     }
 
-    const callbackName = `__memoryTrainingParticipantsCallback_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    const callbackName = `__memoryTrainingJsonpCallback_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     let settled = false;
 
     const script = document.createElement("script");
@@ -174,13 +173,53 @@ function fetchRemoteRegisteredParticipants(timeoutMs = 6000) {
     }
 
     window[callbackName] = (data) => {
-      finish(Array.isArray(data) ? data : []);
+      finish(data === undefined ? fallback : data);
     };
 
-    script.src = `${GOOGLE_SCRIPT_URL}?callback=${callbackName}`;
-    script.onerror = () => finish([]);
-    const timer = setTimeout(() => finish([]), timeoutMs);
+    const query = new URLSearchParams({ ...params, callback: callbackName }).toString();
+    script.src = `${GOOGLE_SCRIPT_URL}?${query}`;
+    script.onerror = () => finish(fallback);
+    const timer = setTimeout(() => finish(fallback), timeoutMs);
 
     document.head.appendChild(script);
   });
+}
+
+/**
+ * Looks up ONE participant by code via the Apps Script's doGet (scoped to
+ * `?code=...`), so logging in on a different device (or generating a
+ * fresh self-registration code) can recognize/avoid an account this
+ * device has never seen, WITHOUT the endpoint ever exposing anyone else's
+ * data - doGet only ever answers "what do you know about this one code?"
+ * (see README.md), never "list everyone."
+ *
+ * Resolves to { name, code, baselineDone, finalDone, baselineScore,
+ * finalScore, trainedDates: ["2026-07-22", ...], totalScores: [78, ...] }
+ * (totalScores parallel to trainedDates) if that code has any row in the
+ * Sheet, or `null` if not - including on any failure (offline, no URL
+ * configured, timeout, older Apps Script without doGet). Callers can't
+ * tell "definitely doesn't exist" apart from "couldn't check right now";
+ * that's intentional, matching how the rest of this app degrades to
+ * "just use local data" when it can't reach the Sheet. See
+ * storage.js#mergeRemoteSummary for how a found summary gets folded into
+ * the local record.
+ */
+function fetchRemoteParticipantByCode(code, timeoutMs = 6000) {
+  return jsonpGet({ code }, null, timeoutMs);
+}
+
+/**
+ * Asks the Apps Script whether `name` is already used by any participant
+ * (case-insensitive - matches the case-insensitive check app.js also does
+ * against locally-known names), scoped to `?checkName=...` so the
+ * response is only ever a boolean, never who holds it or any other
+ * participant's data.
+ *
+ * Resolves `false` ("assume available") on any failure, same reasoning as
+ * fetchRemoteParticipantByCode: this app degrades to local-only checks
+ * rather than blocking sign-up on a check it can't run.
+ */
+async function checkRemoteNameTaken(name, timeoutMs = 6000) {
+  const result = await jsonpGet({ checkName: name }, { taken: false }, timeoutMs);
+  return Boolean(result && result.taken);
 }

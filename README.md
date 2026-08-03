@@ -60,10 +60,10 @@ only asks for a **name** - the participant doesn't invent their own code:
 1. They type the name they want to be known as. The app checks it's not
    already taken (case-insensitively) against everyone it knows about -
    `participants.js`, this device's own past registrations, and anyone
-   who's registered on other devices (see cross-device sync below).
+   who's registered on other devices (see cross-device recognition below).
 2. If it's free, the app generates a fresh code (`generateUniqueParticipantCode()`
-   in app.js - format `P` + 4 digits, e.g. `P4821`, chosen not to collide
-   with anyone already known) and creates the account.
+   in app.js - format `P` + 3 zero-padded digits, e.g. `P042`, chosen not
+   to collide with anyone already known) and creates the account.
 3. The generated code is shown full-screen, large and selectable
    (`#screen-register-code`), with an explicit "Ja l'he guardat, continuar"
    button the participant has to press before moving on - so they have a
@@ -78,42 +78,76 @@ Self-registered accounts are stored in a separate localStorage list
 `PARTICIPANTS_CSV` at load time - they're **not** written back into
 `participants.js`, since a static file the browser can't write to. Account
 creation is also sent to Google Sheets as a `type: "registration"` row (see
-the schema above), which doubles as the mechanism for **cross-device
-recognition**: before checking name uniqueness (at sign-up) or a name/code
-match (at login), the app calls the Apps Script's `doGet` endpoint (JSONP -
-see the code above) and merges back any `registration` rows it doesn't
-already know about locally. So if someone registers on their phone and
-later opens the app on a laptop, logging in with that same name+code there
-will find them (assuming the laptop is online to run that check) - and
-trying to register a second time with the same name will correctly be
-rejected as taken, rather than generating a conflicting second account.
+the schema above).
 
-What this does **not** do is sync training/assessment history across
-devices - only the name+code identity itself. Each device still keeps its
-own `sessions`/`baselineAssessment`/`finalAssessment` in localStorage
-(that data does reach you centrally too, just as individual `training`/
-`baseline`/`final` rows in the Sheet - it's just not read back into the
-app). A participant who logs in and trains from two different devices will
-look, from the app's point of view, like two separate histories under the
-same code; you'd need to reconcile that yourself from the Sheet if it
-happens.
+### Cross-device recognition
+
+At sign-up (name-uniqueness check) and at login (name/code match), the app
+asks the Apps Script's `doGet` endpoint (JSONP - see the code above) about
+exactly one thing at a time - **never the full participant list**:
+
+- `sheets.js#checkRemoteNameTaken(name)` → `?checkName=...` → resolves to
+  `true`/`false`. Used at sign-up. The response reveals nothing about who
+  holds the name or any other participant.
+- `sheets.js#fetchRemoteParticipantByCode(code)` → `?code=...` → resolves
+  to that one participant's summary (or `null` if that code has no rows at
+  all). Used at login (for both a name+code this device already knows
+  locally, to pick up anything new, and one it doesn't) and once more
+  during sign-up to confirm a freshly generated code isn't already used by
+  someone on another device.
+
+What a found summary does, via `storage.js#mergeRemoteSummary` (app.js's
+`loadRemoteParticipants` no longer exists - each check is now made
+individually, right when it's needed, instead of fetching everyone
+up front):
+
+1. Adds that one name+code to this device's in-memory participant list if
+   it doesn't already know them, so login/uniqueness checks recognize an
+   account created (or CSV code only ever used) on another device.
+2. Folds their baseline-done, final-done, and trained-dates status into
+   this device's local record - so logging in on a new device with an
+   account that already passed the baseline elsewhere goes straight to the
+   normal Welcome screen instead of being sent through the baseline
+   assessment again, a session already completed elsewhere today correctly
+   blocks a second one, and the final assessment unlocks once the program
+   is complete regardless of which devices the 18 sessions were spread
+   across.
+
+This is a **summary** sync, not a full one: the merged-in placeholder
+sessions/assessments carry only what's needed for those checks and for the
+progress dashboard's day-count/streak/average/best-score numbers (date and
+total score for sessions; done-or-not and score for assessments) - not the
+per-exercise score breakdown, raw timing/moves data, or exact forgotten
+words for something completed on a different device (those still only
+live in the Sheet and in that other device's own localStorage). Synced-in
+entries are marked `syncedFromOtherDevice: true` if you ever need to tell
+them apart from ones recorded locally. Training from two different devices
+on two different days works fine (both days show up); training the *same*
+day from two devices before either has synced could still let both
+sessions through - an inherent limit of client-only storage with no real
+backend, not something worth engineering around here.
 
 A few other things worth knowing:
 
-- The cross-device check needs a network connection and a configured
-  `GOOGLE_SCRIPT_URL`. Offline, or before you've deployed the Apps Script,
-  sign-up and login still work exactly as before on their own device -
-  they just can't see registrations made elsewhere, so the same name could
-  end up registered twice under two different codes if someone signs up
-  from two devices before either syncs.
+- These checks need a network connection and a configured
+  `GOOGLE_SCRIPT_URL`. Offline, or before you've deployed the Apps Script
+  (or before redeploying it after this or any later update to `doGet`/
+  `doPost`), sign-up, login, and the daily/final-assessment gates all still
+  work exactly as before *on their own device* - they just can't see
+  anything that happened elsewhere yet.
 - Generated codes aren't checked for accidental collision with codes you
   might add to `participants.js` *later* - if you hand-assign a code that
   happens to match one already self-registered, whoever registered first
   keeps it functionally (exact name+code matching still works correctly),
   but it's simplest to keep your own codes on a different pattern than `P###`.
+- `doGet` deliberately never returns more than one participant's data (or
+  a bare `taken` boolean) per request, however it's called - see the
+  privacy note below and the "Data storage & privacy notes" section for
+  what this does and doesn't protect.
 - If you want a closed, researcher-only cohort instead, this feature can be
   removed by pointing the "Ets nou/nova?" link away from `#screen-register`
-  (or hiding it) - `doGet`, `fetchRemoteRegisteredParticipants()`, and the
+  (or hiding it) - `doGet`, `checkRemoteNameTaken()`,
+  `fetchRemoteParticipantByCode()`, `mergeRemoteSummary()`, and the
   register screens then become unused and can be removed too.
 
 ### Demographic questions at sign-up
@@ -143,9 +177,12 @@ participant (`demographics` in the record - see storage.js) and are never
 asked again or editable afterward from the UI. They're sent to Google
 Sheets as part of the same `type: "registration"` row (see the schema
 below) - **not** exposed through the `doGet` endpoint used for cross-device
-login sync, which only ever returns `{ name, code }` pairs, so age/gender/
-education/occupation aren't reachable by anyone who just has the Apps
-Script URL.
+recognition (see above): `doGet` only ever answers "what do you know about
+this one code?" or "is this name taken?", one participant (or a bare
+boolean) at a time, and age/gender/education/occupation are deliberately
+left out of even that single-participant response - so demographics aren't
+reachable by anyone who just has the Apps Script URL, regardless of which
+code or name they ask about.
 
 ## Balanced difficulty sets, and content advancing session to session
 
@@ -282,35 +319,80 @@ automatically (no extra button) to a Google Sheet via a Google Apps Script
        .setMimeType(ContentService.MimeType.JSON);
    }
 
-   // Lets the app read self-registered participants back (see "Cross-device
-   // self-registration" below), so someone who registers on one device is
-   // also recognized on another. Returns JSONP - a plain fetch() can't read
-   // an Apps Script response cross-origin (no CORS headers), but a <script>
-   // tag isn't subject to CORS, so this is the standard workaround.
+   // Lets the app look up cross-device info WITHOUT ever exposing more
+   // than what was specifically asked about (see "Cross-device
+   // recognition" below) - answers exactly one of two scoped questions
+   // per request, never the whole participant list:
+   //   ?code=XXX     -> that ONE participant's summary, or null if no
+   //                    rows exist for that code
+   //   ?checkName=Y  -> { taken: true/false } for whether Y is already
+   //                    used by anyone, with no other data revealed
+   // Returns JSONP - a plain fetch() can't read an Apps Script response
+   // cross-origin (no CORS headers), but a <script> tag isn't subject to
+   // CORS, so this is the standard workaround.
    function doGet(e) {
      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
      var rows = sheet.getDataRange().getValues();
-     var seen = {};
-     var result = [];
-     for (var i = 1; i < rows.length; i++) {
-       var name = rows[i][0];
-       var code = rows[i][1];
-       var type = rows[i][2];
-       if (!name || !code || type !== "registration" || seen[code]) continue;
-       seen[code] = true;
-       result.push({ name: name, code: code });
+     var callback = e.parameter.callback;
+
+     function respond(payload) {
+       var json = JSON.stringify(payload);
+       if (callback) {
+         return ContentService
+           .createTextOutput(callback + "(" + json + ");")
+           .setMimeType(ContentService.MimeType.JAVASCRIPT);
+       }
+       return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
      }
 
-     var json = JSON.stringify(result);
-     var callback = e.parameter.callback;
-     if (callback) {
-       return ContentService
-         .createTextOutput(callback + "(" + json + ");")
-         .setMimeType(ContentService.MimeType.JAVASCRIPT);
+     if (e.parameter.checkName) {
+       var wantedName = String(e.parameter.checkName).toLowerCase();
+       var taken = false;
+       for (var i = 1; i < rows.length; i++) {
+         var rowName = rows[i][0];
+         if (rowName && String(rowName).toLowerCase() === wantedName) { taken = true; break; }
+       }
+       return respond({ taken: taken });
      }
-     return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+
+     if (e.parameter.code) {
+       var wantedCode = String(e.parameter.code);
+       var summary = null;
+       for (var j = 1; j < rows.length; j++) {
+         if (rows[j][1] !== wantedCode) continue;
+         if (!summary) {
+           summary = {
+             name: rows[j][0], code: wantedCode,
+             baselineDone: false, finalDone: false,
+             baselineScore: null, finalScore: null,
+             trainedDates: [], totalScores: []
+           };
+         }
+         if (rows[j][0]) summary.name = rows[j][0]; // keep the latest non-blank name seen
+         var type = rows[j][2];
+         var date = rows[j][3];
+         if (type === "baseline") { summary.baselineDone = true; summary.baselineScore = rows[j][27]; }
+         if (type === "final") { summary.finalDone = true; summary.finalScore = rows[j][27]; }
+         if (type === "training" && date) {
+           summary.trainedDates.push(date);
+           summary.totalScores.push(rows[j][23]);
+         }
+       }
+       return respond(summary);
+     }
+
+     // No recognized query - respond with nothing, never the full dataset.
+     return respond(null);
    }
    ```
+
+   `doGet` never returns more than one participant's data (or a plain
+   `taken` boolean) per request - anyone with the Apps Script URL can only
+   ever ask "what do you know about code X?" or "is name Y taken?", not
+   list everyone. Column indices (`rows[j][23]`, `rows[j][27]`, ...) are
+   positional, matching the header row above - if you ever reorder or
+   insert columns, update these indices to match (0-based, so column 24
+   "Total Score" is index 23).
 
    (`??` requires the V8 runtime, which is the default for new Apps Script
    projects - **Project Settings → check "Enable V8 runtime"** if you're on
@@ -345,13 +427,23 @@ itself (e.g. a broken sheet). Check the sheet occasionally, or watch
   (key `memoryTraining_participants`), scoped per participant code. This is
   what drives the "one session per day" restriction and the personal
   progress dashboard ("El meu progrés").
-- Because this is `localStorage`, history is per-browser/device. If a
-  participant switches devices or clears site data, their local stats
-  dashboard resets — but every session they ever completed is still safely
-  recorded in the Google Sheet.
-- "Security is not a concern" per the project spec, so there's no
-  server-side validation; the CSV check and one-per-day gate are purely
-  client-side.
+- Because this is `localStorage`, full-detail history is per-browser/device -
+  every session is still safely recorded in the Google Sheet regardless.
+  A participant switching devices or clearing site data gets a *summary*
+  of their baseline/final/trained-days status pulled back in automatically
+  (see "Cross-device recognition" above), just not the per-exercise detail
+  behind each score, which stays in the Sheet and on the original device.
+- The Apps Script's `doGet` endpoint is deliberately scoped so that anyone
+  who has the URL - which, since "security is not a concern" per the
+  project spec, is anyone who can view this app's source - can only ever
+  ask about **one** participant's code, or get a plain yes/no on whether
+  one name is taken. There's no request that lists or dumps every
+  participant; see "Cross-device recognition" above for exactly what a
+  single lookup does and doesn't return.
+- Beyond that endpoint scoping, "security is not a concern" per the
+  project spec still applies everywhere else: there's no other
+  server-side validation, and the CSV check and one-per-day gate are
+  purely client-side.
 
 ## Adjusting the program length
 
