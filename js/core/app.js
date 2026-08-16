@@ -389,11 +389,35 @@ function initWelcomeScreen() {
   document.getElementById("btn-final-assessment").addEventListener("click", () => {
     showAssessmentIntro("final");
   });
-  document.getElementById("btn-view-progress").addEventListener("click", () => {
-    renderProgressScreen();
-    showScreen("screen-progress");
-  });
+  document.getElementById("btn-view-progress").addEventListener("click", openProgressScreen);
   document.getElementById("btn-logout").addEventListener("click", logOut);
+}
+
+/**
+ * Reconciles this participant's local record against the Sheet (see
+ * storage.js#mergeRemoteSummary) before showing the progress dashboard,
+ * so what's displayed reflects the server's count rather than whatever's
+ * accumulated locally - the dashboard is exactly where a locally-inflated
+ * session count would otherwise be visible to the participant. Falls back
+ * to whatever's already local (unchanged) if the lookup fails or times
+ * out, same as everywhere else this app talks to the Sheet.
+ */
+async function openProgressScreen() {
+  const btn = document.getElementById("btn-view-progress");
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = "Comprovant...";
+
+  try {
+    const remote = await fetchRemoteParticipantByCode(currentParticipant.code);
+    if (remote) mergeRemoteSummary(remote.name, remote.code, remote);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+
+  renderProgressScreen();
+  showScreen("screen-progress");
 }
 
 // ------------------------------------------------ baseline / final assessment

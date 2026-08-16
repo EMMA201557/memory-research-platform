@@ -11,13 +11,16 @@
  * localStorage is per-browser/device, so on its own a participant logging
  * in from a second device would look brand new - no baseline, no session
  * history. mergeRemoteSummary() (below) closes that gap on login/register
- * by reading a lightweight summary back from the Sheet for that ONE
- * participant's code (see sheets.js#fetchRemoteParticipantByCode - scoped
- * so the Apps Script never hands back more than one participant's data at
- * a time) and filling in only what's missing locally; entries it adds are
- * flagged with `syncedFromOtherDevice: true` and are sparser than a
- * locally-recorded entry (see that function's doc comment for exactly
- * what's included).
+ * and whenever the progress dashboard is opened, by reading a lightweight
+ * summary back from the Sheet for that ONE participant's code (see
+ * sheets.js#fetchRemoteParticipantByCode - scoped so the Apps Script never
+ * hands back more than one participant's data at a time). The SERVER is
+ * the source of truth for anything this device didn't record firsthand:
+ * entries synced in this way are flagged `syncedFromOtherDevice: true`
+ * and get fully rebuilt from the latest fetch every time, rather than
+ * accumulating - so if local data ever drifts ahead of what the Sheet
+ * actually has, the next sync corrects it back down instead of piling on
+ * top of the stale count. See that function's doc comment for exactly how.
  *
  * Data shape stored under STORAGE_KEY:
  * {
@@ -128,28 +131,41 @@ function saveDemographics(code, demographics) {
 }
 
 /**
- * Folds a remote participant summary (from the Apps Script's doGet, one
- * code at a time - see sheets.js#fetchRemoteParticipantByCode) into this
- * device's local record, so completing the baseline, the final
- * assessment, or a day's
- * training on one device is recognized on another instead of silently
- * resetting per device. `remote` is { baselineDone, finalDone,
- * baselineScore, finalScore, trainedDates, totalScores }.
+ * Reconciles this device's local record for `code` against a fresh remote
+ * summary (from the Apps Script's doGet, one code at a time - see
+ * sheets.js#fetchRemoteParticipantByCode), treating the SERVER (the
+ * Sheet) as the source of truth for anything this device didn't record
+ * firsthand. `remote` is { baselineDone, finalDone, baselineScore,
+ * finalScore, trainedDates, totalScores }.
  *
- * Only ever ADDS what's missing locally - never overwrites or removes
- * anything already here - so this is safe to call on every login/register
- * attempt regardless of how much local data already exists (e.g. more
- * recent local sessions that haven't synced to the Sheet yet are left
- * untouched).
+ * The key distinction is `syncedFromOtherDevice`:
+ * - Sessions/assessments THIS device recorded itself (saveSession,
+ *   saveBaselineAssessment, saveFinalAssessment - no such flag) are
+ *   always kept exactly as they are, since they're the freshest possible
+ *   record of something that just happened right here, even if the Sheet
+ *   hasn't caught up to it yet.
+ * - Anything only ever known via a PREVIOUS call to this function
+ *   (`syncedFromOtherDevice: true`) is discarded and rebuilt fresh from
+ *   THIS call's `remote` data. That's what makes this a reconciliation
+ *   rather than a one-way merge: if local data ever drifted ahead of the
+ *   server - a bug, stale test data, manual tampering, a duplicated sync -
+ *   the next login/progress-view corrects it back down to match the
+ *   Sheet, instead of quietly accumulating on top of the stale count
+ *   forever (which is exactly what caused local session counts to show
+ *   far more than the Sheet actually had in practice).
+ *
+ * Only called when `remote` is truthy (a successful lookup) - callers
+ * skip this entirely on a failed/offline fetch, so existing local data is
+ * simply left as the last-known-good state rather than being wiped with
+ * nothing to rebuild from.
  *
  * The synced-in placeholders are intentionally sparse: a remote "baseline
  * done" only carries its score, not the exact date, forgotten words, or
  * recall time (the Sheet summary doesn't include those, to keep doGet's
- * response small) - `syncedFromOtherDevice: true` marks them as such in
- * case that distinction ever matters. Placeholder sessions likewise only
- * carry the date and total score (needed for the one-per-day gate and the
- * progress dashboard's day/streak/average/best-score maths, none of which
- * read the per-exercise `scores`/`details` breakdown - see
+ * response small). Placeholder sessions likewise only carry the date and
+ * total score (needed for the one-per-day gate and the progress
+ * dashboard's day/streak/average/best-score maths, none of which read the
+ * per-exercise `scores`/`details` breakdown - see
  * computeParticipantStats), not full session detail.
  */
 function mergeRemoteSummary(name, code, remote) {
@@ -158,52 +174,54 @@ function mergeRemoteSummary(name, code, remote) {
     store[code] = { name, code, demographics: null, baselineAssessment: null, finalAssessment: null, sessions: [] };
   }
   const record = store[code];
-  let changed = false;
 
-  if (remote.baselineDone && !record.baselineAssessment) {
-    record.baselineAssessment = {
-      date: null,
-      correct: null,
-      total: null,
-      score: remote.baselineScore != null ? remote.baselineScore : null,
-      forgottenWords: [],
-      timeSeconds: null,
-      syncedFromOtherDevice: true
-    };
-    changed = true;
+  if (!record.baselineAssessment || record.baselineAssessment.syncedFromOtherDevice) {
+    record.baselineAssessment = remote.baselineDone
+      ? {
+          date: null,
+          correct: null,
+          total: null,
+          score: remote.baselineScore != null ? remote.baselineScore : null,
+          forgottenWords: [],
+          timeSeconds: null,
+          syncedFromOtherDevice: true
+        }
+      : null;
   }
 
-  if (remote.finalDone && !record.finalAssessment) {
-    record.finalAssessment = {
-      date: null,
-      correct: null,
-      total: null,
-      score: remote.finalScore != null ? remote.finalScore : null,
-      forgottenWords: [],
-      timeSeconds: null,
-      syncedFromOtherDevice: true
-    };
-    changed = true;
+  if (!record.finalAssessment || record.finalAssessment.syncedFromOtherDevice) {
+    record.finalAssessment = remote.finalDone
+      ? {
+          date: null,
+          correct: null,
+          total: null,
+          score: remote.finalScore != null ? remote.finalScore : null,
+          forgottenWords: [],
+          timeSeconds: null,
+          syncedFromOtherDevice: true
+        }
+      : null;
   }
 
-  const knownDates = new Set(record.sessions.map((s) => s.date));
-  (remote.trainedDates || []).forEach((date, i) => {
-    if (!date || knownDates.has(date)) return;
-    knownDates.add(date);
-    const totalScore = (remote.totalScores && remote.totalScores[i]) || 0;
-    record.sessions.push({
-      date,
-      totalTimeSeconds: 0,
-      scores: null,
-      details: null,
-      totalScore,
-      percentCorrect: totalScore,
-      syncedFromOtherDevice: true
+  const firsthandSessions = record.sessions.filter((s) => !s.syncedFromOtherDevice);
+  const firsthandDates = new Set(firsthandSessions.map((s) => s.date));
+  const syncedSessions = (remote.trainedDates || [])
+    .filter((date) => date && !firsthandDates.has(date))
+    .map((date, i) => {
+      const totalScore = (remote.totalScores && remote.totalScores[i]) || 0;
+      return {
+        date,
+        totalTimeSeconds: 0,
+        scores: null,
+        details: null,
+        totalScore,
+        percentCorrect: totalScore,
+        syncedFromOtherDevice: true
+      };
     });
-    changed = true;
-  });
+  record.sessions = [...firsthandSessions, ...syncedSessions];
 
-  if (changed) writeStore(store);
+  writeStore(store);
   return record;
 }
 
