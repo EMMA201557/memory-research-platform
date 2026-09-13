@@ -356,6 +356,29 @@ textarea {
   text-align: center;
 }
 
+.notice-box.cta {
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface-alt));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  color: var(--color-text);
+  font-weight: 600;
+  text-align: center;
+}
+
+.cta-pointer {
+  font-size: 2rem;
+  margin: 4px 0 0;
+  animation: cta-pointer-bounce 1.4s ease-in-out infinite;
+}
+
+@keyframes cta-pointer-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
 .participant-code-display {
   background: var(--color-surface-alt);
   border: 2px dashed var(--color-primary);
