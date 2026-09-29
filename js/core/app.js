@@ -12,19 +12,16 @@ const PROGRAM_WEEKS = 6;
 const SESSIONS_PER_WEEK = 3;
 const PROGRAM_TOTAL_SESSIONS = PROGRAM_WEEKS * SESSIONS_PER_WEEK; // 18
 
-// TEMPORARY: the official data-collection window is ending. While this is
-// true (see renderWelcomeScreen()):
-// - daily training is hidden for anyone who hasn't yet taken the final
-//   evaluation, regardless of how many of the PROGRAM_TOTAL_SESSIONS
-//   they've actually completed;
-// - the final evaluation itself unlocks for everyone, not just those who
-//   finished all of them;
-// - once someone takes it, daily training reopens for them (informal
-//   practice only - the Welcome screen shows a note that the official
-//   study period is over).
+// The research project is over. While this is true (see
+// renderWelcomeScreen()):
+// - the final evaluation can no longer be reached by anyone, regardless of
+//   how many of the PROGRAM_TOTAL_SESSIONS they've completed;
+// - daily training stays open for everyone as informal practice;
+// - participants who already took the final evaluation keep seeing the
+//   "Has completat l'avaluació final..." note on the Welcome screen.
 // Set back to false to return to the normal "final unlocks only after all
 // PROGRAM_TOTAL_SESSIONS sessions" behavior, e.g. for a future cohort.
-const TRAINING_PAUSED_FOR_EARLY_FINAL_EVALUATION = true;
+const PROJECT_ENDED = true;
 
 // Metadata for the 5 exercises, in menu display order.
 const EXERCISES = [
@@ -397,27 +394,18 @@ function renderWelcomeScreen() {
   const finalDoneNoticeEl = document.getElementById("welcome-final-done-notice");
   const periodOverNoticeEl = document.getElementById("welcome-period-over-notice");
 
-  if (TRAINING_PAUSED_FOR_EARLY_FINAL_EVALUATION && !finalDone) {
-    // Daily training paused for everyone still owing a final evaluation:
-    // hide it, point them at the final evaluation instead, and unlock
-    // that regardless of how many sessions they've actually completed.
-    alreadyDoneNoticeEl.hidden = true;
-    startTrainingEl.hidden = true;
-    finalCtaEl.hidden = false;
-    finalBtnEl.hidden = false;
-    finalDoneNoticeEl.hidden = true;
-    periodOverNoticeEl.hidden = true;
-  } else if (TRAINING_PAUSED_FOR_EARLY_FINAL_EVALUATION && finalDone) {
-    // They've taken the final evaluation during the pause: lock it back
-    // up, let them keep training informally, and explain why.
+  if (PROJECT_ENDED) {
+    // Project over: the final evaluation is permanently locked, daily
+    // training stays open for informal practice, and anyone who already
+    // took the final evaluation keeps the note saying so.
     alreadyDoneNoticeEl.hidden = !alreadyDoneToday;
     startTrainingEl.hidden = alreadyDoneToday;
     finalCtaEl.hidden = true;
     finalBtnEl.hidden = true;
     finalDoneNoticeEl.hidden = true;
-    periodOverNoticeEl.hidden = false;
+    periodOverNoticeEl.hidden = !finalDone;
   } else {
-    // Normal flow (pause flag off): final evaluation unlocks only once
+    // Normal flow (PROJECT_ENDED off): final evaluation unlocks only once
     // the full program is complete, same as before this feature existed.
     alreadyDoneNoticeEl.hidden = !alreadyDoneToday;
     startTrainingEl.hidden = alreadyDoneToday;
@@ -433,6 +421,7 @@ function initWelcomeScreen() {
     startNewSession();
   });
   document.getElementById("btn-final-assessment").addEventListener("click", () => {
+    if (PROJECT_ENDED) return; // button is hidden, but never allow it anyway
     showAssessmentIntro("final");
   });
   document.getElementById("btn-view-progress").addEventListener("click", openProgressScreen);
